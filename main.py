@@ -6,18 +6,22 @@ CNC Torna için - X: Uzun Eksen, Y: Kısa Eksen
 """
 
 import sys
+from typing import Optional
 from PyQt6.QtWidgets import (
     QApplication, QMainWindow, QWidget, QVBoxLayout, QHBoxLayout,
     QSplitter, QGroupBox, QLabel, QPushButton, QLineEdit, QSpinBox,
     QDoubleSpinBox, QTextEdit, QFileDialog, QMessageBox, QComboBox,
     QCheckBox, QStatusBar, QMenuBar, QMenu, QToolBar, QGraphicsView,
-    QGraphicsScene, QFrame, QFormLayout, QTabWidget
+    QGraphicsScene, QFrame, QFormLayout, QTabWidget, QGraphicsPathItem
 )
 from PyQt6.QtCore import Qt, QRectF, QPointF
 from PyQt6.QtGui import (
     QAction, QPen, QBrush, QColor, QPainter, QFont, QWheelEvent,
-    QMouseEvent
+    QMouseEvent, QPainterPath
 )
+
+from dxf_reader import DXFReader, DXFData, EntityType
+from gcode_generator import generate_gcode_from_params
 
 
 class DXFPreviewWidget(QGraphicsView):
@@ -139,6 +143,115 @@ class DXFPreviewWidget(QGraphicsView):
         self.resetTransform()
         self.zoom_factor = 1.0
         self.fit_to_view()
+
+    def draw_dxf(self, dxf_data: DXFData):
+        """DXF verilerini çiz"""
+        self.scene.clear()
+
+        # Sınırları al
+        min_x, min_y, max_x, max_y = dxf_data.bounds
+        width = max_x - min_x
+        height = max_y - min_y
+
+        # Grid çiz (DXF boyutlarına göre)
+        if self.show_grid:
+            self._draw_dynamic_grid(min_x, min_y, max_x, max_y)
+
+        # Eksenleri çiz
+        self._draw_axes_at_origin(min_x, min_y, max_x, max_y)
+
+        # Entity renkler
+        entity_pen = QPen(QColor(0, 200, 255))  # Cyan
+        entity_pen.setWidth(0)  # Cosmetic pen (zoom'dan etkilenmez)
+        entity_pen.setCosmetic(True)
+
+        # Her entity'yi çiz
+        for entity in dxf_data.entities:
+            points = entity.get_points()
+            if len(points) < 2:
+                continue
+
+            # QPainterPath oluştur
+            path = QPainterPath()
+            # Y eksenini ters çevir (ekran koordinatları için)
+            path.moveTo(points[0].x, -points[0].y)
+
+            for point in points[1:]:
+                path.lineTo(point.x, -point.y)
+
+            # Path'i sahneye ekle
+            path_item = self.scene.addPath(path, entity_pen)
+
+        # Görünümü sığdır
+        self.fit_to_view()
+
+    def _draw_dynamic_grid(self, min_x: float, min_y: float, max_x: float, max_y: float):
+        """Dinamik grid çiz"""
+        pen = QPen(QColor(50, 50, 50))
+        pen.setWidth(0)
+        pen.setCosmetic(True)
+
+        # Grid aralığını hesapla
+        width = max_x - min_x
+        height = max_y - min_y
+        max_dim = max(width, height)
+
+        # Uygun grid aralığı bul
+        if max_dim <= 10:
+            grid_step = 1
+        elif max_dim <= 50:
+            grid_step = 5
+        elif max_dim <= 100:
+            grid_step = 10
+        elif max_dim <= 500:
+            grid_step = 50
+        else:
+            grid_step = 100
+
+        # Grid sınırlarını genişlet
+        margin = grid_step * 2
+        grid_min_x = (int(min_x / grid_step) - 1) * grid_step
+        grid_max_x = (int(max_x / grid_step) + 2) * grid_step
+        grid_min_y = (int(min_y / grid_step) - 1) * grid_step
+        grid_max_y = (int(max_y / grid_step) + 2) * grid_step
+
+        # Dikey çizgiler
+        x = grid_min_x
+        while x <= grid_max_x:
+            self.scene.addLine(x, -grid_min_y, x, -grid_max_y, pen)
+            x += grid_step
+
+        # Yatay çizgiler
+        y = grid_min_y
+        while y <= grid_max_y:
+            self.scene.addLine(grid_min_x, -y, grid_max_x, -y, pen)
+            y += grid_step
+
+    def _draw_axes_at_origin(self, min_x: float, min_y: float, max_x: float, max_y: float):
+        """Orijinde eksenleri çiz"""
+        # Eksen uzunlukları
+        margin = max(max_x - min_x, max_y - min_y) * 0.1
+
+        # X ekseni (kırmızı)
+        pen_x = QPen(QColor(255, 80, 80))
+        pen_x.setWidth(2)
+        pen_x.setCosmetic(True)
+        self.scene.addLine(min_x - margin, 0, max_x + margin, 0, pen_x)
+
+        # Y ekseni (yeşil) - ters çevrilmiş
+        pen_y = QPen(QColor(80, 255, 80))
+        pen_y.setWidth(2)
+        pen_y.setCosmetic(True)
+        self.scene.addLine(0, -(min_y - margin), 0, -(max_y + margin), pen_y)
+
+        # Eksen etiketleri
+        label_x = self.scene.addText("X", QFont("Arial", 8))
+        label_x.setDefaultTextColor(QColor(255, 80, 80))
+        label_x.setPos(max_x + margin, 5)
+
+        label_y = self.scene.addText("Y", QFont("Arial", 8))
+        label_y.setDefaultTextColor(QColor(80, 255, 80))
+        label_y.setPos(5, -(max_y + margin))
 
 
 class CNCParametersWidget(QWidget):
@@ -355,8 +468,9 @@ class MainWindow(QMainWindow):
 
     def __init__(self):
         super().__init__()
-        self.dxf_file_path = None
-        self.dxf_entities = []
+        self.dxf_file_path: Optional[str] = None
+        self.dxf_data: Optional[DXFData] = None
+        self.dxf_reader = DXFReader()
 
         self._setup_ui()
         self._setup_menubar()
@@ -587,9 +701,25 @@ class MainWindow(QMainWindow):
 
     def _load_and_preview_dxf(self, file_path: str):
         """DXF dosyasını yükle ve önizle"""
-        # TODO: ezdxf kütüphanesi ile DXF okuma eklenecek
-        self.dxf_info_text.setText(f"Dosya: {file_path}\n\nDXF okuma modülü eklenecek...")
-        self.statusbar.showMessage("DXF okuma modülü henüz eklenmedi")
+        try:
+            # DXF dosyasını oku
+            self.dxf_data = self.dxf_reader.read_file(file_path)
+
+            # DXF bilgilerini göster
+            self.dxf_info_text.setText(self.dxf_data.get_info_text())
+
+            # Önizlemeyi çiz
+            self.dxf_preview.draw_dxf(self.dxf_data)
+
+            # Durum çubuğunu güncelle
+            self.statusbar.showMessage(
+                f"DXF yüklendi: {self.dxf_data.entity_count} entity, "
+                f"Boyut: {self.dxf_data.width:.2f} x {self.dxf_data.height:.2f} mm"
+            )
+
+        except Exception as e:
+            QMessageBox.critical(self, "Hata", f"DXF dosyası okunamadı:\n{str(e)}")
+            self.statusbar.showMessage("DXF okuma hatası")
 
     def generate_gcode(self):
         """G-Kod oluştur"""
@@ -597,48 +727,24 @@ class MainWindow(QMainWindow):
             QMessageBox.warning(self, "Uyarı", "Önce bir DXF dosyası yükleyin!")
             return
 
-        params = self.parameters_widget.get_parameters()
+        if not self.dxf_data:
+            QMessageBox.warning(self, "Uyarı", "DXF verisi yüklenememiş!")
+            return
 
-        # TODO: Gerçek G-Kod üretimi eklenecek
-        # Şimdilik örnek G-Kod
-        gcode = self._generate_sample_gcode(params)
-        self.gcode_preview.set_gcode(gcode)
-        self.statusbar.showMessage("G-Kod oluşturuldu")
+        try:
+            params = self.parameters_widget.get_parameters()
 
-    def _generate_sample_gcode(self, params: dict) -> str:
-        """Örnek G-Kod oluştur"""
-        gcode_lines = [
-            "; DXF to G-Code - CNC Torna",
-            f"; Dosya: {self.dxf_file_path}",
-            f"; Makine: {params['machine_type']}",
-            "",
-            "; Başlangıç kodları",
-            params['unit'],  # G20 veya G21
-            "G90 ; Mutlak koordinat",
-            "G17 ; XY düzlemi",
-            f"G0 Z{params['safe_height']} ; Güvenli yükseklik",
-            f"S{params['spindle_speed']} M3 ; Mil başlat",
-            "",
-            "; Başlangıç noktasına git",
-            f"G0 X{params['start_x']} Y{params['start_y']}",
-            "",
-            "; İşlem kodları buraya eklenecek",
-            "; (DXF geometrisinden üretilecek)",
-            "",
-            "; Bitiş kodları",
-            f"G0 Z{params['safe_height']}",
-            "M5 ; Mil durdur",
-        ]
+            # G-Kod üret
+            gcode = generate_gcode_from_params(self.dxf_data, params)
+            self.gcode_preview.set_gcode(gcode)
 
-        if params['home_after']:
-            gcode_lines.append("G28 ; Home")
+            # Durum güncelle
+            line_count = len(gcode.strip().split('\n'))
+            self.statusbar.showMessage(f"G-Kod oluşturuldu: {line_count} satır")
 
-        gcode_lines.extend([
-            "M30 ; Program sonu",
-            ""
-        ])
-
-        return '\n'.join(gcode_lines)
+        except Exception as e:
+            QMessageBox.critical(self, "Hata", f"G-Kod oluşturma hatası:\n{str(e)}")
+            self.statusbar.showMessage("G-Kod oluşturma hatası")
 
     def save_gcode(self):
         """G-Kod kaydet"""
