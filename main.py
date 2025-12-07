@@ -255,7 +255,7 @@ class DXFPreviewWidget(QGraphicsView):
 
 
 class CNCParametersWidget(QWidget):
-    """CNC parametreleri widget'ı"""
+    """CNC Torna parametreleri widget'ı"""
 
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -264,114 +264,164 @@ class CNCParametersWidget(QWidget):
     def _setup_ui(self):
         layout = QVBoxLayout(self)
 
-        # Makine Ayarları
-        machine_group = QGroupBox("Makine Ayarları")
-        machine_layout = QFormLayout()
+        # Kaba Parça Ayarları
+        stock_group = QGroupBox("Kaba Parça (Ham Malzeme)")
+        stock_layout = QFormLayout()
 
-        self.machine_type = QComboBox()
-        self.machine_type.addItems(["CNC Torna", "CNC Freze", "Lazer Kesim"])
-        machine_layout.addRow("Makine Tipi:", self.machine_type)
+        self.stock_diameter = QDoubleSpinBox()
+        self.stock_diameter.setRange(1, 1000)
+        self.stock_diameter.setValue(50.0)
+        self.stock_diameter.setSuffix(" mm")
+        self.stock_diameter.setDecimals(2)
+        stock_layout.addRow("Kaba Çap:", self.stock_diameter)
 
-        self.unit_type = QComboBox()
-        self.unit_type.addItems(["mm (G21)", "inch (G20)"])
-        machine_layout.addRow("Birim:", self.unit_type)
+        self.stock_length = QDoubleSpinBox()
+        self.stock_length.setRange(1, 5000)
+        self.stock_length.setValue(100.0)
+        self.stock_length.setSuffix(" mm")
+        self.stock_length.setDecimals(2)
+        stock_layout.addRow("Kaba Uzunluk:", self.stock_length)
 
-        machine_group.setLayout(machine_layout)
-        layout.addWidget(machine_group)
+        stock_group.setLayout(stock_layout)
+        layout.addWidget(stock_group)
+
+        # Takım Ayarları
+        tool_group = QGroupBox("Takım Ayarları")
+        tool_layout = QFormLayout()
+
+        self.tool_radius = QDoubleSpinBox()
+        self.tool_radius.setRange(0.0, 10)
+        self.tool_radius.setValue(0.4)
+        self.tool_radius.setSuffix(" mm")
+        self.tool_radius.setDecimals(2)
+        tool_layout.addRow("Bıçak Yarıçapı:", self.tool_radius)
+
+        self.tool_number = QSpinBox()
+        self.tool_number.setRange(1, 99)
+        self.tool_number.setValue(1)
+        tool_layout.addRow("Takım No:", self.tool_number)
+
+        self.tool_orientation = QComboBox()
+        self.tool_orientation.addItems(["3 - Sağ (Dış)", "1 - Sol (Dış)", "2 - Sağ (İç)", "4 - Sol (İç)"])
+        tool_layout.addRow("Takım Yönü:", self.tool_orientation)
+
+        tool_group.setLayout(tool_layout)
+        layout.addWidget(tool_group)
+
+        # Tornalama Parametreleri
+        turning_group = QGroupBox("Tornalama Parametreleri")
+        turning_layout = QFormLayout()
+
+        self.rough_depth = QDoubleSpinBox()
+        self.rough_depth.setRange(0.1, 10)
+        self.rough_depth.setValue(1.0)
+        self.rough_depth.setSuffix(" mm")
+        self.rough_depth.setDecimals(2)
+        turning_layout.addRow("Kaba Paso Derinliği:", self.rough_depth)
+
+        self.finish_allowance = QDoubleSpinBox()
+        self.finish_allowance.setRange(0.0, 5)
+        self.finish_allowance.setValue(0.2)
+        self.finish_allowance.setSuffix(" mm")
+        self.finish_allowance.setDecimals(2)
+        turning_layout.addRow("Finiş Payı:", self.finish_allowance)
+
+        self.operation_type = QComboBox()
+        self.operation_type.addItems(["Kaba + Finiş", "Sadece Kaba", "Sadece Finiş"])
+        turning_layout.addRow("İşlem Tipi:", self.operation_type)
+
+        turning_group.setLayout(turning_layout)
+        layout.addWidget(turning_group)
 
         # Hareket Parametreleri
         movement_group = QGroupBox("Hareket Parametreleri")
         movement_layout = QFormLayout()
 
-        self.feed_rate = QSpinBox()
-        self.feed_rate.setRange(1, 10000)
-        self.feed_rate.setValue(100)
-        self.feed_rate.setSuffix(" mm/dak")
-        movement_layout.addRow("İlerleme (F):", self.feed_rate)
+        self.rough_feed = QSpinBox()
+        self.rough_feed.setRange(1, 10000)
+        self.rough_feed.setValue(150)
+        self.rough_feed.setSuffix(" mm/dak")
+        movement_layout.addRow("Kaba İlerleme (F):", self.rough_feed)
 
-        self.plunge_rate = QSpinBox()
-        self.plunge_rate.setRange(1, 5000)
-        self.plunge_rate.setValue(50)
-        self.plunge_rate.setSuffix(" mm/dak")
-        movement_layout.addRow("Dalma Hızı:", self.plunge_rate)
+        self.finish_feed = QSpinBox()
+        self.finish_feed.setRange(1, 10000)
+        self.finish_feed.setValue(80)
+        self.finish_feed.setSuffix(" mm/dak")
+        movement_layout.addRow("Finiş İlerleme (F):", self.finish_feed)
 
         self.spindle_speed = QSpinBox()
         self.spindle_speed.setRange(0, 30000)
-        self.spindle_speed.setValue(1000)
+        self.spindle_speed.setValue(1200)
         self.spindle_speed.setSuffix(" RPM")
         movement_layout.addRow("Devir (S):", self.spindle_speed)
+
+        self.safe_x = QDoubleSpinBox()
+        self.safe_x.setRange(1, 500)
+        self.safe_x.setValue(5.0)
+        self.safe_x.setSuffix(" mm")
+        self.safe_x.setDecimals(2)
+        movement_layout.addRow("Güvenli X:", self.safe_x)
+
+        self.clearance_z = QDoubleSpinBox()
+        self.clearance_z.setRange(0.5, 50)
+        self.clearance_z.setValue(2.0)
+        self.clearance_z.setSuffix(" mm")
+        self.clearance_z.setDecimals(2)
+        movement_layout.addRow("Z Boşluk:", self.clearance_z)
 
         movement_group.setLayout(movement_layout)
         layout.addWidget(movement_group)
 
-        # Kesim Parametreleri
-        cut_group = QGroupBox("Kesim Parametreleri")
-        cut_layout = QFormLayout()
+        # Birim ve Diğer
+        other_group = QGroupBox("Diğer Ayarlar")
+        other_layout = QFormLayout()
 
-        self.cut_depth = QDoubleSpinBox()
-        self.cut_depth.setRange(0.01, 100)
-        self.cut_depth.setValue(1.0)
-        self.cut_depth.setSuffix(" mm")
-        self.cut_depth.setDecimals(2)
-        cut_layout.addRow("Kesme Derinliği:", self.cut_depth)
-
-        self.pass_depth = QDoubleSpinBox()
-        self.pass_depth.setRange(0.01, 50)
-        self.pass_depth.setValue(0.5)
-        self.pass_depth.setSuffix(" mm")
-        self.pass_depth.setDecimals(2)
-        cut_layout.addRow("Paso Derinliği:", self.pass_depth)
-
-        self.safe_height = QDoubleSpinBox()
-        self.safe_height.setRange(1, 100)
-        self.safe_height.setValue(5.0)
-        self.safe_height.setSuffix(" mm")
-        self.safe_height.setDecimals(2)
-        cut_layout.addRow("Güvenli Yükseklik:", self.safe_height)
-
-        cut_group.setLayout(cut_layout)
-        layout.addWidget(cut_group)
-
-        # Başlangıç/Bitiş Ayarları
-        start_end_group = QGroupBox("Başlangıç / Bitiş")
-        start_end_layout = QFormLayout()
-
-        self.start_x = QDoubleSpinBox()
-        self.start_x.setRange(-10000, 10000)
-        self.start_x.setValue(0)
-        self.start_x.setSuffix(" mm")
-        start_end_layout.addRow("Başlangıç X:", self.start_x)
-
-        self.start_y = QDoubleSpinBox()
-        self.start_y.setRange(-10000, 10000)
-        self.start_y.setValue(0)
-        self.start_y.setSuffix(" mm")
-        start_end_layout.addRow("Başlangıç Y:", self.start_y)
+        self.unit_type = QComboBox()
+        self.unit_type.addItems(["mm (G21)", "inch (G20)"])
+        other_layout.addRow("Birim:", self.unit_type)
 
         self.home_after = QCheckBox("İşlem sonrası Home")
         self.home_after.setChecked(True)
-        start_end_layout.addRow("", self.home_after)
+        other_layout.addRow("", self.home_after)
 
-        start_end_group.setLayout(start_end_layout)
-        layout.addWidget(start_end_group)
+        self.coolant = QCheckBox("Soğutma (M8)")
+        self.coolant.setChecked(False)
+        other_layout.addRow("", self.coolant)
+
+        other_group.setLayout(other_layout)
+        layout.addWidget(other_group)
 
         # Boşluk ekle
         layout.addStretch()
 
     def get_parameters(self):
         """Tüm parametreleri döndür"""
+        # Takım yönü kodunu çıkar
+        tool_orient_text = self.tool_orientation.currentText()
+        tool_orient = int(tool_orient_text.split(" - ")[0])
+
         return {
-            'machine_type': self.machine_type.currentText(),
-            'unit': 'G21' if self.unit_type.currentIndex() == 0 else 'G20',
-            'feed_rate': self.feed_rate.value(),
-            'plunge_rate': self.plunge_rate.value(),
+            # Kaba parça
+            'stock_diameter': self.stock_diameter.value(),
+            'stock_length': self.stock_length.value(),
+            # Takım
+            'tool_radius': self.tool_radius.value(),
+            'tool_number': self.tool_number.value(),
+            'tool_orientation': tool_orient,
+            # Tornalama
+            'rough_depth': self.rough_depth.value(),
+            'finish_allowance': self.finish_allowance.value(),
+            'operation_type': self.operation_type.currentText(),
+            # Hareket
+            'rough_feed': self.rough_feed.value(),
+            'finish_feed': self.finish_feed.value(),
             'spindle_speed': self.spindle_speed.value(),
-            'cut_depth': self.cut_depth.value(),
-            'pass_depth': self.pass_depth.value(),
-            'safe_height': self.safe_height.value(),
-            'start_x': self.start_x.value(),
-            'start_y': self.start_y.value(),
-            'home_after': self.home_after.isChecked()
+            'safe_x': self.safe_x.value(),
+            'clearance_z': self.clearance_z.value(),
+            # Diğer
+            'unit': 'G21' if self.unit_type.currentIndex() == 0 else 'G20',
+            'home_after': self.home_after.isChecked(),
+            'coolant': self.coolant.isChecked(),
         }
 
 
